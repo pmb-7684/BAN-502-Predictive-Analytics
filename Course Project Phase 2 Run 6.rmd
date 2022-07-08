@@ -1,0 +1,638 @@
+---
+output:
+  word_document: default
+---
+
+# Paula McCree-Bailey
+## BAN 502 - Final Project:  Course Project Part 2
+
+
+**load libraries**
+```{r load libraries,message=FALSE}
+
+options(tidyverse.quiet=TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(MASS)   
+library(ROCR)
+library(GGally)         #ggcorr and ggpairs
+library(ggcorrplot)     #correlation plot alternative
+library(car)            #qqplot
+library(caret)          #for splitting functions
+library(ranger)         #for random forests
+library(rpart)          #for classification trees
+library(RColorBrewer)   #better visualization of classification trees
+library(rattle)         #better visualization of classification trees
+```
+
+**load dataset**
+```{r load dataset}
+
+chicago = read_csv("chicago2.csv")
+#str(chicago)
+```
+
+
+**Clean up and factor dataset**
+```{r Clean up and factor dataset}
+
+chicago_c = chicago
+
+chicago_c = chicago_c %>% dplyr::select(-ID, -"Case Number", -"Updated On", -"X Coordinate", -"Y Coordinate", -"Location", -X1, -"Block", -"IUCR", -"Description", -"Location Description", -"Beat", -"Community Area", -"FBI Code", -Year, -Latitude, -Longitude, -Ward)
+
+chicago_c = chicago_c %>% mutate(Date = mdy_hms(Date))
+
+chicago_c = chicago_c %>% mutate(Hour = hour(Date))
+
+chicago_c = chicago_c %>% mutate(Month = month(Date))
+
+chicago_c = chicago_c %>% dplyr::select(-Date)
+
+#convert so I can later filter
+Primary_table = table(chicago_c$`Primary Type`)
+Primary_level = names(Primary_table)[order(Primary_table)]
+chicago_c$Plot_Primary = factor(chicago$`Primary Type`, levels = Primary_level)
+
+District_table = table(chicago_c$District)
+District_level = names(District_table)[order(District_table)]
+chicago_c$Plot_District = factor(chicago$District, levels = District_level)
+
+#Filter out low primRY TYPES
+chicago_c1 =filter(chicago_c, Plot_Primary %in% c('THEFT', 'BATTERY','MOTOR VEHICLE THEFT', 'BURGLARY', 'NARCOTICS', 'OTHER OFFENSE', 'DECEPTIVE PRACTICE', 'ASSAULT', 'CRIMINAL DAMAGE', 'OFFENSE INVOLVING CHILDREN', 'SEX OFFENSE','PROSTITUTION','HOMICIDE','LIQUOR LAW VIOLATION'))
+#get rid of arson
+
+#Filter out low district codes
+chicago_c2 =filter(chicago_c1, Plot_District %in% c('009','015','003','005','002 ','010','012','007','025','004','018','001','006','008','011'))
+
+chicago_c3 = chicago_c2 %>% dplyr::select(`Primary Type`, Arrest, Domestic, Hour, Month, District)
+#GET RID OF MONTH -have very little predictive value
+
+#Additonal factoring
+chicago_c4 = chicago_c3 %>% mutate(ArrestV =as.character(as.numeric(Arrest)))
+
+chicago_c4 = chicago_c4 %>% mutate(ArrestV = case_when(`ArrestV` == '0'~'No',
+                                             `ArrestV` == '1'~'Yes'))
+
+chicago_c4 = chicago_c4 %>% mutate(Domestic = as.factor(as.logical(Domestic)))
+chicago_c4 = chicago_c4 %>% mutate(District = as.factor(as.character(District)))
+chicago_c4 = chicago_c4 %>% mutate(Hour = as.factor(as.integer(Hour)))
+chicago_c4 = chicago_c4 %>% mutate(`Primary Type` = as.factor(as.character(`Primary Type`)))
+chicago_c4 = chicago_c4 %>% mutate(Month = as.factor(as.numeric(Month)))
+
+#Rename types to remove spaces
+chicago_c4 = chicago_c4 %>% mutate(PTYPE = case_when(`Primary Type` == 'THEFT'~'THEFT',
+                                            `Primary Type` == 'BATTERY'~'BATTERY',
+                                            `Primary Type` == 'MOTOR VEHICLE THEFT'~'MVTHEFT',
+                                            `Primary Type` == 'BURGLARY'~'BURGLARY',
+                                            `Primary Type` == 'NARCOTICS'~'NARCOTICS',
+                                            `Primary Type` == 'OTHER OFFENSE'~'OTROFFENSE',
+                                            `Primary Type` == 'DECEPTIVE PRACTICE'~'DECEPTIVE',
+                                            `Primary Type` == 'ASSAULT'~'ASSAULT',
+                                            `Primary Type` == 'CRIMINAL DAMAGE'~'CRIME',
+                                            `Primary Type` == 'OFFENSE INVOLVING CHILDREN'~'OFFENSE',
+                                            `Primary Type` == 'SEX OFFENSE'~'SEXOFFENSE',
+                                            `Primary Type` == 'PROSTITUTION'~'PROSTITUTION',
+                                            `Primary Type` == 'HOMICIDE'~'HOMICIDE',
+                                            `Primary Type` == 'LIQUOR LAW VIOLATION'~'LIQUOR',
+                                            `Primary Type` == 'ARSON'~'ARSON'))
+
+#Select Rows
+test_month = chicago_c4 %>% dplyr:: select(ArrestV, Domestic, Hour, Month, District, PTYPE) 
+
+chicago_c5 = chicago_c4 %>% dplyr:: select(ArrestV, Domestic, Hour, District, PTYPE)   
+#GET RID OF MONTH - keep hour; otherwise reduce 1%
+
+#Final factoring
+chicago_c5 = chicago_c5 %>% mutate(`Hour` = as.factor(as.integer(`Hour`)))
+
+chicago_c5 = chicago_c5 %>% mutate(`PTYPE` = as.factor(as.character(`PTYPE`)))
+
+chicago_c5 = chicago_c5 %>% mutate(ArrestV =as.factor(ArrestV)) 
+
+str(chicago_c5)
+```
+
+**random forest**
+
+**using random forest again from descriptive project 1; now includes month as a predictive variable I still believe that day (specially either Month and/or date has some predictive influence on variable ArrestV)**
+
+
+**split data**
+```{r split data Random forest}
+
+set.seed(1234)   
+
+train.rows = createDataPartition(y = test_month$ArrestV, p=0.6, list = FALSE) 
+
+train.month =slice(test_month, train.rows)
+test.month = slice(test_month, -train.rows)
+
+```
+
+
+**create control random forest**
+```{r control random forest}
+
+fit_control = trainControl(method = "cv",  
+                           number = 10) 
+set.seed(1234)  
+
+rf_fit = train(x=as.matrix(train.month[,-1]), y=as.matrix(train.month$ArrestV),
+                 method = "ranger", 
+                 importance = "permutation",
+                 num.trees = 100,
+                 trControl = fit_control)
+```
+
+
+```{r}
+varImp(rf_fit)
+rf_fit
+```
+
+**Decided the final predictive variables are Domestic, PTYPE, District, and Hour**
+
+**Considering what I have heard in the new - crime seems to increase during the summer months.  But i guess that crime could increase, but people are not arrested for the crime. Notice that the time of day rather month does not matter.**
+
+#######################################################################################################
+
+
+**Apply k-fold Regression with stepwise**
+
+
+**The results from this model were the worst of all of the models used with a ROC of 19.74%.  One thing I noticed was the probabilities were greater for being arrested.  This should not be the case - not sure if I did something wrong or what I did wrong**
+
+
+**create control k-fold**
+```{r control k-fold}
+
+ctrl = trainControl(method = "cv",number = 10) 
+
+set.seed(1234) 
+
+modkFold = train(ArrestV ~., chicago_c5, method = "glm", trControl = ctrl)
+summary(modkFold)
+```
+
+
+**Develop predictions**
+```{r Develop predictions k-folds}
+
+predictions = predict(modkFold, type="prob")[,1] #develop predicted probabilities
+head(predictions)
+```
+
+
+**Threshold selection**
+```{r Threshold selection k-folds}
+
+ROCRpred = prediction(predictions, chicago_c5$ArrestV) 
+
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+
+
+**ROC prediction**
+```{r}
+as.numeric(performance(ROCRpred, "auc")@y.values)
+```
+
+
+**threshold to balance sensitivity and specificity**
+```{r threshold to balance sensitivity and specificity}
+
+#Determine threshold to balance sensitivity and specificity
+
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+
+
+**Test thresholds to evaluate accuracy** 
+```{r thresholds to evaluate accuracy}
+
+#confusion matrix
+t1 = table(chicago_c5$ArrestV,predictions > 0.92963981)
+t1
+```
+
+
+**Calculate accuracy  **
+```{r accuracy k-fold}
+(t1[1,1]+t1[2,2])/nrow(chicago_c5)
+```
+
+
+**apply trial and error to maximize accuracy**
+```{r trial and error to maximize accuracy kfold}
+
+t1 = table(chicago_c5$ArrestV,predictions > 0.5)
+t1
+(t1[1,1]+t1[2,2])/nrow(chicago_c5)
+```
+
+
+**Threshold = 0.6  **
+```{r trial and error to maximize accuracy 2}
+
+t1 = table(chicago_c5$ArrestV,predictions > 0.90)
+t1
+(t1[1,1]+t1[2,2])/nrow(chicago_c5)
+```
+
+
+
+#######################################################################################################
+
+
+**Regression with stepwise**
+
+
+**The basic model using just predictor variable - Primary Type had a AIC of 6819.5.  The AIC for the model using all the predictor variables is 4785.8.**
+
+**For the Forward model,  the final model contained just Primary Type and District.  The AIC is 4777.17.**
+
+**For the Backward model,  the final model also contained just Primary Type and District.  The AIC is 4777.17.**
+
+
+**Split the data into training and testing sets**
+```{r Split the data}
+
+set.seed(1234) 
+
+train.rows = createDataPartition(y = chicago_c5$ArrestV, p=0.7, list = FALSE) #70% in training
+
+train.L = slice(chicago_c5, train.rows)
+test.L = slice(chicago_c5, -train.rows)
+```
+
+
+**regression model**
+```{r regression model}
+
+mod_L = glm(ArrestV ~ PTYPE, chicago_c5, family = "binomial")
+summary(mod_L)
+```
+
+
+**Using forward stepwise, backward stepwise to predict “arrest”.**
+```{r Using forward stepwise, backward}
+
+allmod = glm(ArrestV ~ PTYPE +District + Hour + Domestic, train.L, family = "binomial") 
+summary(allmod)  
+  
+emptymod = glm(ArrestV~1, train.L, family = "binomial")  
+summary(emptymod)
+```
+
+
+**FORWARD Stepwise**
+```{r FORWARD Stepwise}
+
+forwardmod = stepAIC(emptymod, direction = "forward", scope=list(upper=allmod,lower=emptymod), trace = TRUE) 
+summary(forwardmod)
+```
+
+
+**BACKWARD Stepwise**
+```{r BACKWARD Stepwise}
+
+backmod = stepAIC(allmod, direction = "backward", trace = TRUE) 
+summary(backmod)
+```
+
+
+**Regression model**
+```{r regression model w 3 predictor}
+
+mod_R3 = glm(train.L$ArrestV ~ train.L$PTYPE  + train.L$District + train.L$Domestic, train.L, family = "binomial")
+
+summary(mod_R3)
+```
+
+
+**Develop predictions**
+```{r Develop predictions}
+
+mod_R5 = glm(train.L$ArrestV ~ train.L$PTYPE  + train.L$District + train.L$Hour + train.L$Domestic, train.L, family = "binomial")
+
+
+predictions = predict(mod_R5, type="response") #develop predicted probabilities
+head(predictions)
+```
+
+
+**Threshold selection**
+```{r}
+ROCRpred = prediction(predictions, train.L$ArrestV) 
+
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+
+
+```{r Threshold selection}
+
+as.numeric(performance(ROCRpred, "auc")@y.values)
+```
+
+
+
+#######################################################################################################
+
+
+**Logistic regression**
+
+**This model is good. The area under the curve (AUC) measures the strength of the model, which was 80.26%.**
+
+**When using this threshold to tested the accuracy of the model , the accuracy rate declines 73.32%.**
+**However, by increasing the threshold to 0.5, we can increase the accuracy to 87.78%.  The threshold is just a cutoff point for our dataset.**
+
+**Overall this model is good.  It is important to remember that the dataset is skewed in favor of not being arrested.**
+
+
+
+**control log regression**
+```{r control log regression}
+
+ctrl = trainControl(method = "cv",number = 5) 
+
+set.seed(1234) 
+
+modkFold = train(ArrestV ~., chicago_c5, method = "glm", trControl = ctrl)
+summary(modkFold)
+```
+
+
+**Honestly, Hours does not have anything significant.  I noticed when I ran the model with and without the variable hours, there was maybe .05% difference in favor of keeping Hour.**
+
+**The most significant predictor variable is Primary Type.  it doesn't really matter where you live or the time of day or month that the crime occurs.**
+
+
+**develop predicted probabilities**
+```{r develop predicted probabilities}
+
+#develop predicted probabilities
+
+predictions = predict(modkFold, type="prob")[,2] 
+head(predictions, n=50)
+```
+
+
+**prediction**
+```{r predictions}
+ROCRpred = prediction(predictions, chicago_c5$ArrestV) 
+
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+
+Area under the curve (AUC). AUC is a measure of the strength of the model. Values closer to 1 are better. Can be used to compare models. 
+
+
+**AUC**
+```{r AUC}
+
+as.numeric(performance(ROCRpred, "auc")@y.values)
+```
+
+
+**threshold to balance sensitivity and specificity**
+```{r threshold to balance sensitivity and specificity -Lregreesion}
+#Determine threshold to balance sensitivity and specificity
+
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+
+
+**Test thresholds to evaluate accuracy **
+```{r Test thresholds}
+
+#confusion matrix
+t1 = table(chicago_c5$ArrestV,predictions > 0.1684539)
+t1
+```
+
+
+**Calculate accuracy**
+```{r Calculate accuracy}
+
+(t1[1,1]+t1[2,2])/nrow(chicago_c5)
+```
+
+
+**apply trial and error to maximize accuracy (here trying 0.5 as threshold)**
+```{r trial and error r1}
+
+t1 = table(chicago_c5$ArrestV,predictions > 0.5)
+t1
+(t1[1,1]+t1[2,2])/nrow(chicago_c5)
+```
+
+
+**Threshold = 0.7 **
+```{r trial and error r2}
+
+t1 = table(chicago_c5$ArrestV,predictions > 0.7)
+t1
+(t1[1,1]+t1[2,2])/nrow(chicago_c5)
+```
+
+
+**A naive prediction (everyone not arrested)**
+```{r naive prediction }
+
+t1 = table(chicago_c5$ArrestV,predictions > 1) #set threshold to 1 so all are classifed as not delinquent
+t1
+(t1[1])/nrow(chicago_c5)
+```
+
+
+
+#######################################################################################################
+
+
+**Classification Tree**
+
+**It uses all predictor variables to determine which one is best. In this situation, Primary Type influences the response variable Arrest.**
+
+**The type of crime commended determines if the person is likely to be arrested or not. The training model performs at 87.7% regarding predicting the response.  The testing data  performed at a rate of 87.97%.**
+
+**The naïve model – assumed no one is arrested only resulting in ~80.0%.  Again, it is lower than the models above, but not better.**
+
+
+
+**split data classification**
+```{r split - calssification}
+
+set.seed(1234)       
+
+train.rows = createDataPartition(y = chicago_c5$ArrestV, p=0.7, list = FALSE) 
+
+train.c = slice(chicago_c5, train.rows)
+test.c = slice(chicago_c5, -train.rows)
+```
+
+
+**classification tree using all of the predictor variables to predict**
+```{r  tree using all}
+
+tree.c = rpart(train.c$ArrestV~., train.c, method="class")
+fancyRpartPlot(tree.c)
+```
+
+
+**cp value**
+```{r cp value}
+
+printcp(tree.c)
+plotcp(tree.c)
+```
+
+**Prune the tree (at minimum cross-validated error) **
+
+**really nothing to prune, but let's see what it does**
+
+```{r Prune the tree}
+
+tree.c2 = prune(tree.c,cp= tree.c$cptable[which.min(tree.c$cptable[,"xerror"]),"CP"])
+tree.c2
+```
+
+
+**Predictions on training set **
+```{r Predictions on training set}
+
+treepred.c = predict(tree.c, train.c, type = "class")
+head(treepred.c, n=20)
+```
+
+
+**Caret confusion matrix and accuracy - train**
+```{r Caret confusion matrix - training}
+
+confusionMatrix(treepred.c, train.c$ArrestV,positive="Yes")
+```
+
+
+
+**Predictions on testing set **
+```{r Predictions on testing }
+
+treepred.c_test = predict(tree.c, newdata=test.c, type = "class")
+head(treepred.c_test, n=20)
+```
+
+
+
+**Caret confusion matrix and accuracy - test**
+```{r Caret confusion matrix - testing}
+
+confusionMatrix(treepred.c_test,test.c$ArrestV,positive="Yes")
+```
+
+
+
+#######################################################################################################
+
+
+**Stacking**
+
+**In Stacking, we used General linear regression, Random tree, Classification tree, and Net neutral models to produce the best model.**
+
+**This model determined that the linear regression model was the best of the four models. The training model performs at 87.92% regarding predicting the response.  The testing data also performed a similar rate of 87.94%.**
+
+**The naïve model – assumed no one is arrested only resulting in ~80.0%, which is much less, but much better than the training and testing models.**
+
+
+
+**split data stacking**
+```{r split stacking}
+
+set.seed(1234)
+
+split = createDataPartition(y=chicago_c5$ArrestV, p = .7, list = FALSE)
+train = slice(chicago_c5,split)
+test = slice(chicago_c5,-split)
+```
+
+
+**create control stacking**
+```{r control stacking}
+
+control = trainControl(
+  method = "cv",
+  number = 5, 
+  savePredictions = "final",
+  classProbs = TRUE,                   #instructs caret to calculate probabilities 
+  summaryFunction = twoClassSummary,   #enables calculation of AUC 
+  index=createResample(train$ArrestV)   #new line needed (manages sampling in folds)
+  )
+```
+
+
+**load libraries & create model list**
+```{r load addtional libraries}
+
+library(caretEnsemble) 
+library(ranger)
+library(VIM)
+library(mice)
+
+
+model_list = caretList(
+  x=train[,-1], y=train$ArrestV,                 #use all variables (except Survived) as predictors
+  metric = "ROC",                                #specify that maximizing AUC is our objective
+  trControl= control,                            #using the previously defined trControl object
+  methodList=c("glm","ranger","rpart", "nnet")   #specifying the model methods to use
+  
+
+    #Ignore the warning message after you run this, it's not a problem!
+)
+```
+
+
+**create caretstack**
+```{r create caretstack}
+
+stack = caretStack(
+  model_list, #use the list of models already specified
+  method ="glm", #stack models linearly
+  metric ="ROC", #maximize AUC
+  trControl = control #use existing train control object
+  )
+
+print(stack)
+summary(stack)
+```
+
+
+**predict on train and test**
+```{r predict on train and test}
+
+#training set
+pred_stack = predict(stack, train, type = "raw")
+confusionMatrix(pred_stack,train$ArrestV)
+
+#testing set
+pred_stack_test = predict(stack, test, type = "raw")
+confusionMatrix(pred_stack_test,test$ArrestV)
+```
+
