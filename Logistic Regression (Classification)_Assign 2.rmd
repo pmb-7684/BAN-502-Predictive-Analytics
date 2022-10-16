@@ -1,0 +1,277 @@
+---
+output:
+  word_document: default
+---
+# Paula McCree Bailey
+## Module 3 - Assignment 2
+### Logistic Regression (Classification)
+
+```{r load library and dataset, message=FALSE}
+
+
+#install.packages("ROCR")
+
+library(tidyverse)
+library(MASS)   
+library(ROCR)
+library(caret) 
+library(GGally)
+library(gridExtra)
+
+parole = read.csv("parole.csv")
+str(parole)
+```
+
+
+```{r convert factor}
+
+parole = parole %>% mutate(male = as_factor(as.numeric(male))) %>%
+mutate(male = fct_recode(male,
+"Female" = "0",
+"Male" = "1"))
+
+parole = parole %>% mutate(race = as_factor(as.numeric(race))) %>%
+mutate(race = fct_recode(race,
+"Otherwise" = "2",
+"White" = "1"))
+
+parole = parole %>% mutate(state = as_factor(as.numeric(state))) %>%
+mutate(state = fct_recode(state,
+"Virginia" = "4",
+"Louisiana" = "3",
+"Kentucky" = "2",
+"Other state" = "1"))
+
+parole = parole %>% mutate(crime = as_factor(as.numeric(crime))) %>%
+mutate(crime = fct_recode(crime,
+"driving-related crime" = "4",
+"drug-related crime" = "3",
+"larceny" = "2",
+"other crime" = "1"))
+
+parole = parole %>% mutate(multiple.offenses = as_factor(as.numeric(multiple.offenses))) %>%
+mutate(multiple.offenses = fct_recode(multiple.offenses,
+"Otherwise" = "0",
+"multiple offenses" = "1"))
+
+parole = parole %>% mutate(violator = as_factor(as.numeric(violator))) %>%
+mutate(violator = fct_recode(violator,
+"completed parole" = "0",
+"violated parole" = "1"))
+
+parole = parole %>% mutate(age = as_factor(as.numeric(age)))
+
+parole = parole %>% mutate(time.served = as_factor(as.numeric(time.served)))
+
+parole = parole %>% mutate(max.sentence = as_factor(as.numeric(max.sentence)))
+
+str(parole)
+```
+
+**Task 1** Split the data into training and testing sets
+```{r split data}
+
+set.seed(12345) #important to replicate data
+
+train.rows = createDataPartition(y = parole$violator, p=0.7, list = FALSE) #70% in training
+#train = bike[train.rows,] 
+#test = bike[-train.rows,]
+
+train = slice(parole, train.rows)
+test = slice(parole, -train.rows)
+```
+
+
+**Task 2**  Provide a brief explanation of your thought process
+
+**My thought process is to use the plots to determine the predictor variable that has the largest amount of parole violations. This is based on the height of the bar chart given violators. The variable that appears to be most predictive of "violator" is whether a parole had multiple offenses.**
+
+```{r plots}
+p1 = ggplot(train, aes(male, fill = violator)) +  geom_bar() 
+p2 = ggplot(train, aes(race, fill = violator)) +  geom_bar()
+p3 = ggplot(train, aes(state, fill = violator)) +  geom_bar()
+p4 = ggplot(train, aes(multiple.offenses, fill = violator)) +  geom_bar()
+p5 = ggplot(train, aes(crime, fill = violator)) +  geom_bar()
+#p6 = ggplot(train, aes(age, fill = violator)) +  geom_bar()
+#p7 = ggplot(train, aes(time.served, fill = violator)) +  geom_bar()
+p8 = ggplot(train, aes(max.sentence, fill = violator)) +  geom_bar()
+
+grid.arrange(p1,p2,p3,p4, p5, p8, ncol= 2) #arranging ggplot objects in a grid
+
+```
+
+
+**Task 3** Identify the variable from Task 2 that appears to you to be most predictive of “violator”. Create a logistic regression model using this variable to predict violator. Comment on the quality of the model.**
+
+**The variable that appears to be most predictive of "violator" is whether a parole had multiple offenses.**
+
+**The quality of the model seems to be good.  Multiple.offense is significant (p value is less than .05 and the coefficient is positive.  The baseline AIC is 479.81.**
+
+```{r regression model - multi offense}
+
+mod_1 = glm(violator ~ multiple.offenses , parole, family = "binomial")
+
+summary(mod_1)
+
+```
+
+**Task 4** Using forward stepwise, backward stepwise to predict “violator”.
+
+Comment on the quality of your final model. In particular, note which variables are significant and comment on how intuitive the model may (or may not) be.
+
+**The best model has an AIC of 258.98. Both the forward and the backward stepwise ended up with this AIC value.  For the forward stepwise, the significant variables are state of Kentucky and Virginia, multiple offenses, and race.  For the backward stepwise, the significant variables are the state of Virginia, multiple offenses, and race. I noticed the final models were not the same even though both models had the same AIC.  The final model for the forward stepwise contains race, male, and crime. The final model for the backward stepwise contains race, multiple offense, and state. To me, the backward stepwise is the better model - race, multiple offense, and state.  The forward stepwise selected male, but likely more males are imprisoned than females, so there may be more that violate parole. Also crime does not seem to be the best predictor compared to multiple offenses.**
+
+
+```{r Set up for Stepwise}
+allmod = glm(violator ~ male +race +state +crime +multiple.offenses, train, family = "binomial") 
+summary(allmod)  
+  
+emptymod = glm(violator~1, train, family = "binomial")  
+summary(emptymod)
+
+```
+**FORWARD Stepwise**
+
+
+```{r FORWARD Stepwise}
+
+forwardmod = stepAIC(emptymod, direction = "forward", scope=list(upper=allmod,lower=emptymod), trace = TRUE) 
+summary(forwardmod)
+```
+
+**BACKWARD Stepwise**
+
+```{r BACKWARD Stepwise}
+backmod = stepAIC(allmod, direction = "backward", trace = TRUE) 
+summary(backmod)
+```
+
+
+**Task 5** Create a logistic regression model using the training set to predict “violator” using the variables: state, multiple.offenses, and race. Comment on the quality of this model. Be sure to note which variables are significant.
+
+**This is a good model.  The AIC  is 258.98, which is much lower than the baseline of 479.81 and is the same value as the forward and backward stepwise.  The significant variables in this model are the state of Virginia, if the parole has multiple offenses and if the parole's race was non white.  I agree with the negative coefficient for Virginia.  if you are from Virginia, you are less likely to violate parole.  This is the best model for our dataset.**
+
+```{r regression model w 3 predictors}
+
+mod_3 = glm(train$violator ~ train$state + train$multiple.offenses + train$race, train, family = "binomial")
+
+summary(mod_3)
+```
+
+
+**Task 6** What is the predicted probability of parole violation of the two following parolees? Parolee1: Louisiana with multiple offenses and white race; Parolee2: Kentucky with no multiple offenses and other race.
+
+**Honestly, the final numbers do not look correct for either parole.  My results are -0.6722372 for parole1 and -1.34333 for parole2.  Again, this does not seem correct.  Parole1 should have a higher probability of violation. He is from a state with a higher chance of violation - Louisiana and has multiple violations. I am not really sure what I did wrong.**
+
+
+```{r predict function}
+#Using predict function
+
+mod2 = glm(violator ~ state + multiple.offenses + race, train, family = "binomial")
+
+
+#summary(mod2)
+P1_testdata = data.frame(state = "Louisiana", multiple.offenses = "multiple offenses", race = "White")
+predict(mod2, newdata = P1_testdata, interval = "predict")
+
+P2_testdata = data.frame(state = "Kentucky", multiple.offenses = "Otherwise", race = "Otherwise")
+predict(mod2, newdata = P2_testdata, interval = "predict")
+```
+
+
+**Task 7** Develop an ROC curve and determine the probability threshold that best balances specificity and sensitivity on the training data.
+
+Area under the curve (AUC). AUC is a measure of the strength of the model. Values closer to 1 are better. 
+
+**Develop predictions**
+
+```{r Develop predictions}
+
+mod_3 = glm(train$violator ~ train$state + train$multiple.offenses + train$race, train, family = "binomial")
+
+
+predictions = predict(mod_3, type="response") #develop predicted probabilities
+head(predictions)
+
+```
+
+
+**Threshold selection**
+
+```{r ROCR Threshold selection}
+#Change this next line to the names of your predictions and the response variable in the training data frame
+ROCRpred = prediction(predictions, train$violator) 
+
+###You shouldn't need to ever change the next two lines:
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+
+```{r}
+as.numeric(performance(ROCRpred, "auc")@y.values)
+```
+
+
+**Task 8**  What is the accuracy, sensitivity, and specificity of the model on the training set given the cutoff from Task 7? What are the implications of incorrectly classifying a parolee?
+
+**Sensitivity is .7272727; **
+**Specificity is .8588517; **
+**Accuracy is 0.8435518**
+
+**If you incorrectly classify a parole, it will affect the accuracy, sensitivity, and specificity of the model, which could cause the model not to be an accurate fit for the entire dataset.**
+
+```{r threshold to balance sensitivity and specificity}
+#Determine threshold to balance sensitivity and specificity
+#DO NOT modify this code
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+
+Test thresholds to evaluate accuracy 
+
+**The accuracy of this model is 84.36% on the training data.**
+
+```{r evaluate accuracy }
+#confusion matrix
+t1 = table(train$violator,predictions > 0.2069629)
+t1
+
+#Calculate accuracy
+
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+
+**Task 9** Identify a probability threshold (via trial-and-error) that best maximizes accuracy on the training set.
+
+
+**The probability threshold (via trial-and-error) that best maximizes accuracy on the training set is .603, which produces a rate of 89.218%.**
+
+```{r probability threshold (via trial-and-error}
+t1 = table(train$violator,predictions > .603)
+t1
+(t1[1,1]+t1[2,2])/nrow(train)
+```
+
+
+**Task 10**  Use your probability threshold from Task 9 to determine accuracy of the model on the testing set.
+
+**The accuracy on the test data is 2.089109.  To me, this indicates that the data is not a good fit for the entire dataset.  This seems subjective. If we ran the data using another set.seed number, we could determine that this model does fit.**
+
+```{r probability threshold on test}
+#confusion matrix
+t1 = table(train$violator,predictions > 0.603)
+t1
+
+#Calculate accuracy
+
+(t1[1,1]+t1[2,2])/nrow(test)
+```
+

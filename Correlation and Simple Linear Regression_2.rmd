@@ -1,0 +1,187 @@
+---
+output:
+  word_document: default
+---
+# Paula McCree Bailey
+## Module 2 - Assignment 1
+### Correlation and Simple Linear Regression Assignment
+
+```{r load library, message=FALSE}
+##install.packages("lmtest")
+##install.packages("GGally")
+##install.packages("car")
+
+library(tidyverse)
+library(GGally)
+library(car)
+library(lmtest)
+
+air = airquality
+```
+
+
+**TASK 1** Describe this dataset. How many variables and observations are there? Is there any missing data? Which variable is likely to be the response (Y) variable?
+
+**The AirQuality dataset contains the daily air quality measurements in New York from May to September 1973.  It contains 6 variables with 153 observations. The dataset does contain missing data. The variable Ozone is likely to be the response (Y) variable.**
+
+
+```{r Remove NA values}
+air2 <- air %>% drop_na()
+```
+
+**TASK 2**  How many rows and columns remain in this new (air2) data frame?
+
+**The new air2 dataframe contains 111 rows and 6 columns.**
+
+```{r Visualization and calculate correlation}
+#ggpairs plot for visualization and correlation
+
+ggpairs(air2)
+```
+
+
+```{r create a correlation matrix}
+
+#use "ggcorr" to create a correlation matrix with labels and correlation reported to two decimals
+
+ggcorr(air2, label = "TRUE", label_round = 2)
+```
+
+**TASK 3**
+Which variable is most strongly correlated with the “Ozone” variable?
+Which variable is least strongly correlated with the “Ozone” variable?
+
+**Temperature is more strongly correlated with the "ozone" variable.**
+**Day is least strongly correlated with the "ozone" variable.**
+
+
+```{r Graph temp vs ozone}
+
+ggplot(air2,aes(x=Temp,y=Ozone)) + 
+  geom_point()+
+  labs(title = "Relationship Temperature vs Ozone")
+```
+
+**TASK 4**  Describe the relationship between “Temp” and “Ozone”.
+
+**There seems to be a positive linear relationship between the temperature** **and ozone.  As the temperature increases, the ozone levels increase. The** **graph does have some outliers with higher ozone levels around 78 - 85** **degrees.**
+
+
+```{r regression mode}
+#create linear regression model
+
+model1 <- lm(Ozone ~ Temp, air2)
+summary(model1)
+confint(model1)
+```
+
+**Task 5:** a. Discuss the quality of this model (mention the R square value and significance of the predictor variable). b. Use the code “confint(model1)” generate 95% confidence intervals for the coefficients. In what range does the slope coefficient likely fall?
+
+
+**a.This seem to be an okay model. It seems odd that the Y-intercept **
+**falls below the x-axis.  The slope is positive. For every 2.4391 degree ** **increase the ozone increases by 1.  Temp is significantly correlated with a** **p-value under .05.  The adjust R square is okay (not great), it is not**
+**close to 1.**
+
+**b. The slope is likely to fall in the range of [-0.47433, 5.35253].**
+
+
+
+
+**TASK 6**  Re-do Task 4 to include the regression line
+
+```{r graph w regression line}
+ggplot(air2,aes(x=Temp,y=Ozone)) + 
+  geom_point()+
+  geom_smooth(method = "lm", color = "red", se = FALSE)+
+  labs(title = "Temperature vs Ozone w/ Regression Line")
+```
+
+**TASK 7**  Develop a prediction for “Ozone” when “Temp” is 80.
+
+```{r Question of linear relationship}
+
+temp_pm <- filter(air2,air2$Temp==80)
+
+#using predication function
+predict(model1, newdata=temp_pm,interval="predict")
+
+#prediction interval
+temp_var <- predict(model1,interval = "prediction")
+new_df <- cbind(air2, temp_var)
+
+ggplot(new_df, aes(x = Ozone, y = Temp)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  geom_line(aes(y=lwr), color = "red", linetype = "dashed") +
+  geom_line(aes(y=upr), color = "red", linetype = "dashed") +
+  theme_bw()
+```
+
+**Task 8** Perform appropriate model diagnostics to verify whether or not the model appears to meet the four linear regression model assumptions. 
+Provide a brief comment on each assumptions validity for this model.
+
+**The assumption was made the remaining portion of the assignment dealt**
+**with the entire model and not just the subset of temps at 80 degrees.**
+
+**Assumption 1: **The predictor and response variable have a linear relationship
+
+**The predictor variable does seem to have a linear relationship with ozone. **
+**The plot has many outliers, but it does seem to be linear.**
+
+
+**Assumption 2:** Model errors (residuals) are independent
+
+**We fail to reject the null hypothesis with a p-value greater than 0.05.** **This suggests that the residuals are likely independent.**
+
+```{r Durbin-Watson Test}
+
+dwtest(model1)
+```
+
+**Assumption 3: ** Model residuals exhibit constant variance  
+Examine a plot of residuals.
+
+```{r Add residuals}
+#just temp values equal 80
+#temp_pm = temp_pm %>% mutate(resid1 = model_80$residuals) #add the model residuals to our data frame
+#ggplot(temp_pm,aes(x=Ozone,y=resid1)) + geom_point() + theme_bw()
+
+# plot of residuals
+air2 = air2 %>% mutate(resid1 = model1$residuals) #add the model residuals to our data frame
+ggplot(air2,aes(x=Ozone,y=resid1)) + geom_point() + theme_bw()
+```
+
+**There does seem to appear to be a constant change in the variance of residuals. There are areas which are not constant, but overall it seems constant. **
+
+
+**Assumption 4:**  Model residuals are Normally-distribute.
+Examine a histogram of the residuals.
+
+```{r graph - histogram}
+#ggplot(temp_pm,aes(x=resid1)) + geom_histogram(bins = 15) + theme_bw()
+
+ggplot(air2,aes(x=resid1)) + geom_histogram() + theme_bw()
+```
+
+```{r}
+#qqPlot(model_80)
+
+qqPlot(model1)
+```
+**The residuals histogram is Normal. The black line does not lie directly**
+**in between the blue lines, but it is close. We also see outliers**
+
+**The Normal Probability Plot below confirms what we saw in the histogram.**
+**The data does follow a normal distribution.**
+
+
+
+**Task 9 ** How might the model that you constructed in Task 5 be used?
+Are there any cautions or concerns that you would have when recommending 
+the model for use?
+
+**The model might be used to predict the affects of temperature on the ozone.**
+
+**Some cautions I would have is the outliers in the temperature.  For example**
+**80 degrees produced variance in the ozone from 7 to 65.  This does not**
+**seem likely to happen - maybe there was faulty equipment.**

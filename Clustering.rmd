@@ -1,0 +1,194 @@
+---
+output:
+  word_document: default
+
+---
+# Paula McCree Bailey
+## Module 6, Assignment 1
+### Clustering Assignment
+
+
+```{r load libraries, message=FALSE}
+
+options(tidyverse.quiet=TRUE)
+suppressPackageStartupMessages(library(dendextend))
+
+library(tidyverse)
+library(cluster)          #algorithms for clustering
+library(factoextra)       #visualization
+library(dendextend)       #viewing clustering dendograms
+
+```
+
+
+```{r read dataset trucks.csv}
+
+trucks = read_csv("trucks.csv")
+#str(trucks)
+#summary(trucks)
+```
+
+
+**Task 1** Plot the relationship between Distance and Speeding. Describe this relationship. Does there appear
+to be any natural clustering of drivers?
+
+**The relationship is the greater the average distance traveled in a day, the greater the percentage of time that the driver is driving at least 5 miles per hour over the speed limit.**
+
+**Yes, there is a natural clustering. One cluster is between the distance of 25 and 75 miles traveled in a day.  The other cluster is between 140 and 250 miles.**
+
+
+```{r Plot Distance vs Speeding}
+
+ggplot(trucks, aes(Distance, Speeding)) + geom_line()+
+  ggtitle("Plot of Distance vs Speeding")
+```
+
+**Task 2** Create a new data frame (called trucks2) that excludes the Driver_ID variable and includes scaled versions of the Distance and Speeding variables.
+
+```{r Select Data}
+
+trucks2 = as.data.frame(trucks)
+
+trucks2 = trucks2 %>%select("Distance", "Speeding")
+
+truck2 = scale(trucks2) 
+
+#colnames(trucks_scaled)[colnames(trucks_scaled) == "Distance"] <- "Dist_scaled"
+#colnames(trucks_scaled)[colnames(trucks_scaled) == "Speeding"] <- "Speed_scaled"
+
+#truck2 = cbind(trucks2,trucks_scaled)
+
+```
+
+
+**Task 3** Use k-Means clustering with two clusters (k=2) to cluster the trucks2 data frame. Use a random
+number seed of 64. Visualize the clusters using the fviz_cluster function. Comment on the clusters.
+
+**The datasets fits 2 clusters well. Although, we could consider 4 clusters. We could think of the upper portion of blue area as a separate cluster.  There is a similar seperation with the pink cluster.**
+
+```{r k-mean clustering}
+
+set.seed(64)
+
+clusters1 <- kmeans(truck2, 2)
+
+fviz_cluster(clusters1, truck2)
+```
+
+**Task 4** Use the two methods from the k-Means lecture to identify the optimal number of clusters. Use a
+random number seed of 64 for these methods. Is there consensus between these two methods as the optimal
+number of clusters?
+
+**Yes, there is a consensus between the two methods. The optimal number of clusters is 4.**
+
+Method 1
+```{r Method 1 - Trucks}
+
+set.seed(64)
+fviz_nbclust(truck2, kmeans, method = "wss")       #minimize within-cluster variation
+```
+
+Method 2
+
+```{r Method 2 - Trucks}
+
+set.seed(64)
+fviz_nbclust(truck2, kmeans, method = "silhouette")   #maximize how well points sit in their clusters
+```
+
+
+**Task 5** Use the optimal number of clusters that you identified in Task 4 to create k-Means clusters. Use a random number seed of 64. Use the fviz_cluster function to visualize the clusters.
+
+```{r Optimal Visualize trucks}
+
+set.seed(64)
+
+clusters2 <- kmeans(truck2, 4)
+
+fviz_cluster(clusters2, truck2)
+```
+
+**Task 6** In words, how would you characterize the clusters you created in Task 5?
+
+**The pink cluster(1) are drivers who drive close to the average number of miles and drive .5% or less over the speed limit.  The blue cluster (2) are drivers who drive close to the average number of miles and .5% to 4% over the speed limit.  The purple cluster (4) are  drivers who drive 1 to 3.5 times the average number of miles and drive 2% or less over the speed limit.  The green cluster (2) are drivers who drive 1 to 3 times the average number of miles and drive 2% to 6.5% over the speed limit.**
+
+
+
+
+**Task 7**  Create a new data frame called “bball2” that excludes team name and scales the variables. Then
+use the two methods from Task 4 to determine the optimal number of k-Means clusters for this data. Use a random number seed of 123. Is there consensus between these two methods as the optimal number of
+clusters?
+
+**There is not a consensus between the two methods as the optimal number of clusters.  For method 1, the optimal number is 5. For method 2, the optimal number is 2.**  
+
+```{r load new data}
+
+bball = read_csv("kenpom20.csv")
+#str(bball2)
+#summary(bball2)
+
+```
+
+
+```{r select data - bball}
+
+bball2 = bball %>% select(-TeamName) 
+
+bball2 = scale(bball2)
+
+#str(bball2)
+#summary(bball2)
+
+```
+
+Method 1
+
+```{r Method 1 - Bball}
+
+set.seed(123)
+fviz_nbclust(bball2, kmeans, method = "wss")
+```
+
+Method 2
+
+```{r Method 2 - Bball}
+
+set.seed(123)
+fviz_nbclust(bball2, kmeans, method = "silhouette")
+```
+
+
+**Task 8** Create k-Means clusters with a k of 4. Use a random number seed of 1234. Use the fviz_cluster
+function to visualize the clusters.
+
+```{r k-means cluster - bball}
+
+set.seed(1234)
+
+clusters3 <- kmeans(bball2, 4)
+
+fviz_cluster(clusters3, bball2)
+```
+
+
+**Task 9** Extract the cluster number from the k-means algorithm and attach as a new column to your “bball”
+data frame. Use the code as shown below, but replace XXX with the name of your k-means object. Plot
+“AdjOE” vs. “AdjDE” (use a scatterplot) and assign point color based on “clusternum”.
+
+What patterns do you see?
+
+**There is no distinct patterns.  You can see there is small clustering of blue towards the top.  There is also a small clustering of green towards the bottom right.  For the most part, the clusters seems to overlap each other.  This is similar to k-means cluster plot above.**
+
+```{r Cluster number - bball}
+
+cluster = data.frame(clusters3$cluster)
+bball2 = cbind(bball2,cluster)
+
+#bball2 = bball2 %>% mutate(clusternum = cluster3$cluster)  #need to get use to piping; timesave; error
+```
+
+```{r Plot Clusters - Bball}
+
+ggplot(bball2, aes(x=AdjOE,y=AdjDE,color=factor(clusters3.cluster))) + geom_point() #facet_wrap(~factor(category))
+```
+

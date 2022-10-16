@@ -1,0 +1,269 @@
+---
+output:
+  word_document: default
+---
+# Paula McCree-Bailey
+## BAN 502 - Module 4 Assignment 2
+### Classification Trees
+
+```{r load library and dataset, message=FALSE}
+#install.packages("rpart")
+#install.packages("RColorBrewer")
+#install.packages("rattle")
+
+library(tidyverse)
+library(caret)        #for splitting functions
+library(rpart)        #for classification trees
+library(RColorBrewer) #better visualization of classification trees
+library(rattle)       #better visualization of classification trees
+
+parole = read.csv("parole.csv")
+
+```
+
+#Factor Conversion
+```{r factor conversion}
+
+parole = parole %>% mutate(male = as_factor(as.numeric(male))) %>%
+mutate(male = fct_recode(male,
+"Female" = "0",
+"Male" = "1"))
+
+parole = parole %>% mutate(race = as_factor(as.numeric(race))) %>%
+mutate(race = fct_recode(race,
+"Otherwise" = "2",
+"White" = "1"))
+
+parole = parole %>% mutate(state = as_factor(as.numeric(state))) %>%
+mutate(state = fct_recode(state,
+"Virginia" = "4",
+"Louisiana" = "3",
+"Kentucky" = "2",
+"Other state" = "1"))
+
+parole = parole %>% mutate(crime = as_factor(as.numeric(crime))) %>%
+mutate(crime = fct_recode(crime,
+"driving-related crime" = "4",
+"drug-related crime" = "3",
+"larceny" = "2",
+"other crime" = "1"))
+
+parole = parole %>% mutate(multiple.offenses = as_factor(as.numeric(multiple.offenses))) %>%
+mutate(multiple.offenses = fct_recode(multiple.offenses,
+"Otherwise" = "0",
+"multiple offenses" = "1"))
+
+parole = parole %>% mutate(violator = as_factor(as.numeric(violator))) %>%
+mutate(violator = fct_recode(violator,
+"completed parole" = "0",
+"violated parole" = "1"))
+
+str(parole)
+```
+
+
+**Task 1** Split the data into training and testing sets
+
+```{r Split the data}
+set.seed(12345)        #important to replicate data
+
+train.rows = createDataPartition(y = parole$violator, p=0.7, list = FALSE) 
+
+train = slice(parole, train.rows)
+test = slice(parole, -train.rows)
+```
+
+
+**Task 2** Create a classification tree using all of the predictor variables to predict “violator” in the training set. Plot the tree.
+
+```{r classification tree 1}
+
+tree1 = rpart(train$violator~., train, method="class")
+fancyRpartPlot(tree1)
+```
+
+
+**Task 3** For the tree created in Task 2, how would you classify a 40 year-old parolee from Louisiana who
+served a 5 year prison sentence? Describe how you “walk through” the classification tree to arrive at your
+answer
+
+**Completing this question seems to depend on the race of the parole. **
+
+**A - 40 year-old white parolee from Louisiana who served a 5 year prison sentence**
+**The first decision box is the parolee from Virginia, Kentucky or Other State.  The parole is from Louisiana, so the response is no.  The next decision box is the parole white or another race.  The parole is white.  The final decision is the parole will complete parole.**
+
+**A - 40 year-old non-white parolee from Louisiana who served a 5 year prison sentence**
+**The first decision box is the parolee from Virginia, Kentucky or Other State.  The parole is from Louisiana, so the response is no.  The next decision box is the parole white or another race.  The parole is non-white. The next decision box is the time serviced greater than 3.5 years.  The response is yes.  The next decision box is age less than 30.  The response is no.  The final is the parole will not complete their parole.**
+
+**Task 4** Use the printcp function to evaluate tree performance as a function of the complexity parameter
+(cp). What cp value should be selected? 
+
+**0.030303 is the cp value that should be selected.**
+
+```{r printcp function}
+printcp(tree1)
+plotcp(tree1)
+```
+
+
+**Task 5** Prune the tree from Task 2 back to the cp value that you selected in Task 4. Do not attempt to plot the tree. You will find that the resulting tree is known as a “root”. A tree that takes the form of a root is essentially a naive model that assumes that the prediction for all observations is the majority class. Which class (category) in the training set is the majority class (i.e., has the most observations)?
+
+**Completed parole is the majority class in the training set.**
+
+Prune the tree (at minimum cross-validated error) 
+
+```{r Pruning}
+tree2 = prune(tree1,cp= tree1$cptable[which.min(tree1$cptable[,"xerror"]),"CP"])
+tree2
+```
+
+
+**Task 6*:** Use the unpruned tree from Task 2 to develop predictions for the training data. Use caret’s
+confusionMatrix function to calculate the accuracy, specificity, and sensitivty of this tree on the training data. Note that we would not, in practice, use an unpruned tree as such a tree is very likely to overfit on new data.
+
+**Accuracy, specificity, and sensitivty of this tree on the training data.**
+
+**Accuracy    : 0.9027;**
+**Sensitivity : 0.9569;**       
+**Specificity : 0.4909 **
+
+Predictions on training set 
+
+```{r Predictions on training set}
+
+treepred = predict(tree1, train, type = "class")
+head(treepred, n=50)
+
+```
+
+Caret confusion matrix and accuracy, etc. calcs 
+
+```{r confusion matrix}
+
+confusionMatrix(treepred,train$violator,positive="completed parole")
+```
+
+
+**Task 7** Use the unpruned tree from Task 2 to develop predictions for the testing data. Use caret’s
+confusionMatrix function to calculate the accuracy, specificity, and sensitivty of this tree on the testing data.
+Comment on the quality of the model.
+
+**Accuracy, specificity, and sensitivty of this tree on the testing data.**
+
+**Accuracy    : 0.896;**
+**Sensitivity : 0.9553;**        
+**Specificity : 0.4348**
+
+**The quality of this model is good  The accuracy of the training model is 90.27%  The accuracy of the testing model is 89.6%. The actuary decreased slightly when applied to the testing data.  The Sensitivity and Specificity are relevantly the same.  Again, this model should fit well with this dataset**
+
+Predictions on testing set 
+
+```{r Predictions on testing set}
+
+treepred_test = predict(tree1, newdata=test, type = "class")
+head(treepred_test, n=24)
+```
+
+Caret confusion matrix and accuracy, etc. calcs 
+
+```{r}
+confusionMatrix(treepred_test,test$violator,positive="completed parole")
+```
+
+**Task 8** Read in “Blood.csv” and complete factor on dataset 
+
+```{r read in dataset and factor}
+
+blood = read.csv("Blood.csv")
+
+blood = blood %>% mutate(DonatedMarch = as_factor(as.numeric(DonatedMarch))) %>%
+mutate(DonatedMarch = fct_recode(DonatedMarch,
+"No" = "0",
+"Yes" = "1"))
+
+str(blood)
+```
+
+
+**Task 9** Split the dataset into training (70%) and testing (30%) sets.
+Then develop a classification tree on the training set to predict “DonatedMarch”. Evaluate the complexity parameter (cp) selection for this model.
+
+**0.010000 is the best complexity parameter (cp) selection, which is after 4 partitions in the data.  The error is 84.8%.**
+
+```{r}
+set.seed(1234)        
+
+train.rows = createDataPartition(y = blood$DonatedMarch, p=0.7, list = FALSE) 
+
+trainB = slice(blood, train.rows)
+testB = slice(blood, -train.rows)
+```
+
+ Create a classification tree
+ 
+```{r classification tree}
+
+treeB = rpart(trainB$DonatedMarch~., trainB, method="class")
+fancyRpartPlot(treeB)
+```
+ 
+```{r}
+
+printcp(treeB)
+plotcp(treeB)
+```
+
+
+**Task 10** Prune the tree back to the optimal cp value, make predictions, and use the confusionMatrix
+function on the both training and testing sets. Comment on the quality of the predictions.
+
+**Using the cp value to determine the quality of the predictions, this model is okay (not really that good).  The accuracy of the training model is 81.3%  The accuracy of the testing model is 77.68%. The actuary decreased slightly when applied to the testing data. Both models are better than their naive models. The Sensitivity and Specificity are relevantly the same.**
+ 
+ Prune the tree (at minimum cross-validated error)
+```{r prune tree}
+
+treeBp = prune(treeB,cp= treeB$cptable[which.min(treeB$cptable[,"xerror"]),"CP"])
+treeBp
+```
+
+
+```{r cp value}
+
+printcp(treeBp)
+plotcp(treeBp)
+```
+ 
+ 
+ Predictions on training set 
+```{r Predictions on training}
+
+treepredB = predict(treeB, trainB, type = "class")
+head(treepredB, n=10)
+```
+
+
+Caret confusion matrix and accuracy, etc. calcs 
+```{r Caret confusion matrix on training}
+
+ confusionMatrix(treepredB,trainB$DonatedMarch,positive="Yes")
+```
+ 
+ 
+Predictions on testing set
+```{r Predictions on testing}
+
+treepred_testB = predict(treeB, testB, type = "class")
+head(treepred_testB)
+```
+
+Caret confusion matrix and accuracy, etc. calcs
+```{r Caret confusion matrix on testing}
+
+confusionMatrix(treepred_testB,testB$DonatedMarch,positive="Yes") 
+```
+
+
+
+
+ 
+ 

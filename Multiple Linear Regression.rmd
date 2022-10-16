@@ -1,0 +1,185 @@
+---
+output:
+  word_document: default
+---
+# Paula McCree Bailey
+## Module 2 - Assignment 2
+### Multiple Linear Regression Assignment
+
+
+```{r load library, message=FALSE, comment=FALSE}
+
+#install.packages("gridExtra")
+
+tidyverse.quiet = TRUE
+library(tidyverse)
+library(GGally)
+library(car)
+library(MASS)
+library(gridExtra)
+
+bike <- read.csv("hour.csv")
+```
+
+**TASK 1**
+```{r conversion to factor}
+# convert “season” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(season = as_factor(as.character(season))) %>%
+mutate(season = fct_recode(season,
+"Spring" = "1",
+"Summer" = "2",
+"Fall" = "3",
+"Winter" = "4"))
+
+# convert “yr”, "mnth", & "hr" to a factor
+
+bike = bike %>% mutate(yr = as_factor(as.character(yr)))
+bike = bike %>% mutate(mnth = as_factor(as.character(mnth)))
+bike = bike %>% mutate(hr = as_factor(as.character(hr)))
+
+# convert “holiday” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(holiday = as_factor(as.character(holiday))) %>%
+mutate(holiday = fct_recode(holiday,
+"NotHoliday" = "0",
+"Holiday" = "1"))
+
+# convert “workingday” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(workingday = as_factor(as.character(workingday))) %>%
+mutate(workingday = fct_recode(workingday,
+"NotWorkingDay" = "0",
+"WorkingDay" = "1"))
+
+# convert “weathersit” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(weathersit = as_factor(as.character(weathersit))) %>%
+mutate(weathersit = fct_recode(weathersit,
+"NoPrecip" = "1",
+"Misty" = "2",
+"LightPrecip" = "3",
+"HeavyPrecip" = "4"))
+
+# convert “weekday” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(weekday = as_factor(as.character(weekday))) %>%
+mutate(weekday = fct_recode(weekday,
+"Sunday" = "0",                           
+"Monday" = "1",
+"Tuesday" = "2",
+"Wednesday" = "3",
+"Thursday" = "4",
+"Friday" = "5",
+"Saturday" = "6"))
+
+str(bike)
+```
+
+```{r visualization and correlation}
+#ggpairs plot for visualization and correlation
+
+quan_bike <- dplyr :: select(bike, temp:count)
+ggpairs(quan_bike)
+```
+
+
+**Task 2:**  Which of the quantitative variables appears to be best correlated with “count” (ignore the “registered”and “casual” variable as the sum of these two variables equals “count”)?
+
+**Temp and Atemp appears to be the best correlated with count.**
+
+```{r plot for correlation}
+p1 = ggplot(bike, aes(x=dteday,y=count)) + geom_boxplot() + theme_bw()
+p2 = ggplot(bike, aes(x=season,y=count)) + geom_boxplot() + theme_bw()
+p3 = ggplot(bike, aes(x=yr,y=count)) + geom_boxplot() + theme_bw()
+p4 = ggplot(bike, aes(x=mnth,y=count)) + geom_boxplot() + theme_bw()
+p5 = ggplot(bike, aes(x=hr,y=count)) + geom_boxplot() + theme_bw()
+p6 = ggplot(bike, aes(x=holiday,y=count)) + geom_boxplot() + theme_bw()
+p7 = ggplot(bike, aes(x=weekday,y=count)) + geom_boxplot() + theme_bw()
+p8 = ggplot(bike, aes(x=workingday,y=count)) + geom_boxplot() + theme_bw()
+p9 = ggplot(bike, aes(x=weathersit,y=count)) + geom_boxplot() + theme_bw()
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8,p9, ncol = 3)
+
+```
+
+
+**Task 3: ** Provide a brief explanation as to why you believe that each variable does or does not affect “count”.
+
+**Date (dteday) of the year** does affect the count. The plot shows certain days of the year more people are renting bikes.
+
+**Season** does affect the count. The plot shows during summer and fall more people are renting bikes.  
+
+**Year** does not affect the count. The median is close, although year1 was slightly higher in regards to people renting bikes. This could be year over year more people are renting bikes.
+
+**Month** does affect the count. The plot shows certain months of the year more people are renting bikes.  The count seems higher May through October.
+
+**Hr** does affect the count. The plot shows certain times of the day people are more likely to rent bikes.  
+
+**Holiday** does not affect the count. The medians are close, although it looks like people are slightly more likely to rent bikes on nonholiday.
+
+**Weekday** does not affect the count. The medians are close.
+
+**NotWorkingDay** does not affect the count. The medians are close. Although, it does look like people are more likely to rent bikes on a workingday.
+
+**Weather situation ** (weathersit) does affect the count. The plot shows people are more likely to renting bikes when there is no precipitation.
+
+
+```{r forward stepwise regression}
+
+test_grp = bike %>%dplyr::select(-c(instant, dteday, registered, casual))
+
+allmod = lm(count ~., test_grp) 
+summary(allmod)
+
+emptymod = lm(count ~1, test_grp) 
+summary(emptymod)
+
+
+#forward
+forwardmod = stepAIC(emptymod, direction = "forward", scope=list(upper=allmod,lower=emptymod),
+                     trace = TRUE)
+```
+**TASK 4** What variables are included in your forward model? Comment on the quality of the model. Does the model match our intuition/common sense? Is there evidence of multicollinearity?
+
+**The forward model includes 13 variables - season, yr, mnth, hr, holiday,** **weekday, workingday, weathersit, temp, atemp, hum, windspeed, and count.**
+
+**Yes, the model matches my intuition overall.   Summer, Winter, and Fall are** **significant. It has a good p-value and adjusted R squared. The model does**
+**have some questionable negative estimates.**
+
+**Yes, there is evidence of multicollinearity.  The estimate for the month of**
+**July is negative 13. It does not make sense for July to be negative.  In**
+**addition, holiday and weekdays have negative estimates with the exception**
+**of Friday.**
+
+
+```{r Backward stepwise regression}
+#backward
+backmod = stepAIC(allmod, direction = "backward", trace = TRUE) 
+
+summary(backmod)
+```
+
+
+**Task 5: **Repeat Task 4, but for backward stepwise. Does this model differ from the forward model? If so, how?
+
+**The backward model does not seem to differ from the forward model.**
+**Both models produce the same AIC of 160717.7.**
+
+
+
+**Task 6: **If you look carefully, you will notice that the coefficients and p value for “workingday” in the model with all of the predictors (the model used to begin the backward stepwise approach) are listed as “NA”. This is typically a sign that that variable is perfectly correlated with another variable and is, thus, being “kicked out” of the model. 
+
+Describe how “workingday” is represented in the model via other variables.
+
+**workingday is represented as 1, if either weekend or holiday, otherwise**
+**is 0.**
+
+
+
+**Task 7: ** Comment on the usability of this model. Any cautions concerning its potential use?
+
+**This model would be useful for a bike rental business in order to determine**
+**the best times to increase the number of bikes or employees on hand for its**
+**busy period.**
+
+**My concerns are with the multicollinearity in particular the month of July and most** **the workingdays.**

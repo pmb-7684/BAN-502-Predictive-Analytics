@@ -1,0 +1,160 @@
+---
+output:
+  word_document: default
+---
+# Paula McCree Bailey
+## Module 3 - Assignment 1
+### Model Validation
+
+
+```{r load libaries & data, message=FALSE, warning=FALSE}
+tidyverse.quiet = TRUE
+
+#install.packages("caret")
+
+library(tidyverse)
+library(caret)            #for splitting functions
+
+bike <- read.csv("hour.csv")
+```
+
+```{r conversion to factor}
+# convert “season” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(season = as_factor(as.character(season))) %>%
+mutate(season = fct_recode(season,
+"Spring" = "1",
+"Summer" = "2",
+"Fall" = "3",
+"Winter" = "4"))
+
+# convert “yr”, "mnth", & "hr" to a factor
+
+bike = bike %>% mutate(yr = as_factor(as.character(yr)))
+bike = bike %>% mutate(mnth = as_factor(as.character(mnth)))
+bike = bike %>% mutate(hr = as_factor(as.character(hr)))
+
+# convert “holiday” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(holiday = as_factor(as.character(holiday))) %>%
+mutate(holiday = fct_recode(holiday,
+"NotHoliday" = "0",
+"Holiday" = "1"))
+
+# convert “workingday” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(workingday = as_factor(as.character(workingday))) %>%
+mutate(workingday = fct_recode(workingday,
+"NotWorkingDay" = "0",
+"WorkingDay" = "1"))
+
+# convert “weathersit” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(weathersit = as_factor(as.character(weathersit))) %>%
+mutate(weathersit = fct_recode(weathersit,
+"NoPrecip" = "1",
+"Misty" = "2",
+"LightPrecip" = "3",
+"HeavyPrecip" = "4"))
+
+# convert “weekday” to a factor and to rename the factor levels
+
+bike = bike %>% mutate(weekday = as_factor(as.character(weekday))) %>%
+mutate(weekday = fct_recode(weekday,
+"Sunday" = "0",                           
+"Monday" = "1",
+"Tuesday" = "2",
+"Wednesday" = "3",
+"Thursday" = "4",
+"Friday" = "5",
+"Saturday" = "6"))
+
+```
+
+**TASK 1**
+```{r split data}
+set.seed(1234) #important to replicate data
+
+train.rows = createDataPartition(y = bike$count, p=0.7, list = FALSE) #70% in training
+#train = bike[train.rows,] 
+#test = bike[-train.rows,]
+
+train = slice(bike, train.rows)
+test = slice(bike, -train.rows)
+```
+
+**TASK 2** How many rows of data are in each set (training and testing)?
+
+**There are 12,167 rows in the training dataset and 5,212 rows in the testing dataset**
+
+
+
+**Task 3** Build a linear regression model (using the training set) to predict “count” using the variables “season”, “mnth”, “hr”, “holiday”, and “weekday”, “temp”, and “weathersit”. Comment on the quality of the model. Be sure to note the Adjusted R-squared value.
+
+
+**Based on the multiple r-squared and the adjusted r-squared, the quality of this model is okay - more good than poor. The r-squared value is 0.6217 and the adjust r-squared is 0.6202. The closer to 1 the value is, the better the R-squared value.  Most of the predictor variables are significant with the exception of some months and some weekdays.  Due to some negative coefficients and the rather large estimated value for temp, there is multicollinearity in this dataset.**
+
+
+```{r linear regression model for count}
+
+mod1 = lm(count ~ season + mnth + hr + holiday +weekday + temp + weathersit, train )
+
+summary(mod1)
+```
+
+
+
+
+
+**Task 4** Use predict function on the training set
+
+**Just looking at the first 6 rows and the summary, the predictions have some strange values.  This is confirmed by looking at the histogram, the data is not normally distributed.  There are some strange predictions around 200.**
+
+```{r predict & plot}
+
+predict_train = predict(mod1, newdata = train)
+head(predict_train)
+summary(predict_train)
+
+ggplot(train,aes(x=predict_train)) + geom_histogram() + theme_bw()
+
+```
+
+
+
+
+
+
+**Task 5** Use predict functions on the test set
+
+**Just looking at the first 6 rows and the summary, the predictions also have some strange values.  Again, looking at the histogram, the data is not normally distributed.  There is a similar peak around the 200 predict_train value.**
+
+
+```{r}
+
+predict_test = predict(mod1, newdata = test)
+head(predict_test)
+summary(predict_test)
+
+ggplot(test,aes(x=predict_test)) + geom_histogram() + theme_bw()
+
+```
+
+
+**Task 6** Manually calculate the R squared value on the testing set
+
+```{r R squared manually on test}
+
+SSE = sum((test$count - predict_test)^2) #sum of squared residuals from model
+SST = sum((test$count - mean(test$count))^2) #sum of squared residuals from a "naive" model
+1 - SSE/SST #definition of R squared
+```
+
+
+**The R-squared value on the training dataset is 0.6217. The manually calculated R-squared value on the test dataset is 0.6289233. The values are not equal, but they are close with the manually calculated value being slightly better.  If we complete this model on the entire dataset, we should expect that it will preform about the same.**
+
+
+
+**Task 7** Describe how k-fold cross-validation differs from model validation via a training/testing split.
+
+**Using the k-fold cross-validation does not require you to split the dataset into training and testing set.  if you want to replicate the data, you need to create a set.seed.  You need to specify the number of partitions to complete the fold. This information is also necessary to set up the train.control function. For Model validation via training/testing, it is necessary to create a split of the training and testing data. You can use a set.seed, if you need to replicate the model. You also begin with running the model on the training dataset first. Once you have the final model, you run it on the test data to determine if it is a good fit. **  
